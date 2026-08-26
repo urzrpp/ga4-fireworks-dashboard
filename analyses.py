@@ -59,31 +59,43 @@ def acquisition_channels() -> pd.DataFrame:
     return df
 
 
-def funnel_analysis() -> pd.DataFrame:
+def funnel_analysis(date_start: str | None = None, date_end: str | None = None) -> pd.DataFrame:
     """
-    퍼널 분석: config.FUNNEL_STEPS 순서대로 각 이벤트를 발생시킨 고유 사용자 수를 집계하고
-    단계별 전환율 / 이탈률을 계산.
+    퍼널 분석: config.FUNNEL_STEPS 순서대로 각 단계(이벤트 또는 페이지 접속)를
+    발생시킨 고유 사용자 수를 집계하고 단계별 전환율 / 이탈률을 계산.
+
+    각 단계는 {"type": "event", "name": ...} 또는 {"type": "page", "path": ...} 형태.
 
     주의: GA4 Data API는 '엄격한 순서'를 강제하는 네이티브 퍼널 엔드포인트가 없어서
-    이 함수는 각 단계 이벤트를 발생시킨 사용자 수의 근사치입니다.
+    이 함수는 각 단계를 발생시킨 사용자 수의 근사치입니다.
     사용자별 이벤트 순서를 엄격히 강제한 정확한 퍼널이 필요하면 BigQuery Export 연동을 권장합니다.
     """
+    date_start = date_start or config.CAMPAIGN_START
+    date_end = date_end or config.CAMPAIGN_END
+
     rows = []
     prev_users = None
     for step in config.FUNNEL_STEPS:
+        if step["type"] == "page":
+            field_name, value, dim_name = "pagePath", step["path"], "pagePath"
+        else:
+            field_name, value, dim_name = "eventName", step["name"], "eventName"
+
         dim_filter = FilterExpression(
             filter=Filter(
-                field_name="eventName",
+                field_name=field_name,
                 string_filter=Filter.StringFilter(
-                    value=step,
+                    value=value,
                     match_type=Filter.StringFilter.MatchType.EXACT,
                 ),
             )
         )
         df = run_report(
-            dimensions=["eventName"],
+            dimensions=[dim_name],
             metrics=["activeUsers", "eventCount"],
             dimension_filter=dim_filter,
+            date_start=date_start,
+            date_end=date_end,
         )
         users = int(df["activeUsers"].iloc[0]) if not df.empty else 0
         events = int(df["eventCount"].iloc[0]) if not df.empty else 0
@@ -93,7 +105,8 @@ def funnel_analysis() -> pd.DataFrame:
 
         rows.append(
             {
-                "step": step,
+                "step": step["label"],
+                "step_key": step.get("name") or step.get("path"),
                 "users": users,
                 "event_count": events,
                 "step_conversion_rate_%": round(step_conv, 2),

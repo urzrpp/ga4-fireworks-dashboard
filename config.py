@@ -22,15 +22,16 @@ CREDENTIALS_FILE = os.environ.get(
 DATE_RANGE_START = os.environ.get("GA4_DATE_START", "28daysAgo")
 DATE_RANGE_END = os.environ.get("GA4_DATE_END", "today")
 
-# 퍼널 분석에 사용할 이벤트 순서
-# plus_fireworks 이벤트 사이트 실제 이벤트 기준으로 설정한 참여 퍼널:
-# 진입 -> 본인인증 -> 키워드 참여 -> 이벤트 완료
-# (실제 참여 플로우와 다르면 GA4 실시간 화면에서 이벤트 순서를 확인해 수정하세요)
+# 퍼널 분석 단계 정의.
+# type "event" = eventName 기준, type "page" = pagePath 기준(페이지 접속).
+# 실제 GA4 pagePath 데이터로 검증한 순서(활성 사용자 수 단조 감소 확인됨):
+# 진입 -> 키워드 이벤트 페이지 접속 -> 키워드 참여 -> 본인인증 제출 -> 이벤트 완료
 FUNNEL_STEPS = [
-    "session_start",
-    "auth_form_submit",
-    "keyword_submit",
-    "fireworks_event_complete",
+    {"type": "event", "name": "session_start", "label": "캠페인 진입"},
+    {"type": "page", "path": "/event/keyword", "label": "키워드 이벤트 페이지 접속"},
+    {"type": "event", "name": "keyword_submit", "label": "키워드 참여"},
+    {"type": "event", "name": "auth_form_submit", "label": "본인인증 제출"},
+    {"type": "event", "name": "fireworks_event_complete", "label": "이벤트 완료"},
 ]
 
 # 프로모션/캠페인으로 간주할 이름 필터 (선택) - None이면 전체 캠페인 표시
