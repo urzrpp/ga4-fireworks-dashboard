@@ -1,0 +1,54 @@
+name: Refresh GA4 dashboard
+
+on:
+  schedule:
+    # 매 15분마다 (GitHub Actions는 부하에 따라 몇 분 지연될 수 있음)
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # 수동 실행 버튼도 활성화
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-dashboard
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write GA4 service account key
+        run: echo "$GA4_SERVICE_ACCOUNT_KEY" > /tmp/ga4-key.json
+        env:
+          GA4_SERVICE_ACCOUNT_KEY: ${{ secrets.GA4_SERVICE_ACCOUNT_KEY }}
+
+      - name: Fetch latest GA4 data
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/ga4-key.json
+        run: python3 refresh_pipeline.py > /tmp/live_data.json
+
+      - name: Patch dashboard with fresh data
+        run: python3 patch_data.py index.html /tmp/live_data.json
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "ga4-dashboard-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if ! git diff --quiet -- index.html; then
+            git add index.html
+            git commit -m "chore: refresh GA4 data $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          else
+            echo "No data change, skipping commit."
+          fi
